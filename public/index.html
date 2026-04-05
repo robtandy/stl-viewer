@@ -406,17 +406,6 @@
             // Poll for file changes every 500ms
             pollInterval = setInterval(checkForChanges, 500);
         }
-            }
-            
-            // Poll for file changes every 500ms
-            // Note: Currently just keeps the connection alive
-            // The watcher in the server triggers this, so this is just a fallback
-            pollInterval = setInterval(() => {
-                if (currentFilePath) {
-                    // Just check if we should still be polling - don't reload every time
-                }
-            }, 1000);
-        }
         
         function stopPolling() {
             if (pollInterval) {
