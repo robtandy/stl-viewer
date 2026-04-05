@@ -4,6 +4,14 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>STL Viewer</title>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.183.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.183.0/examples/jsm/"
+      }
+    }
+    </script>
     <style>
         * {
             margin: 0;
@@ -184,9 +192,9 @@
     </div>
 
     <script type="module">
-        import * as THREE from '/node_modules/three/build/three.module.js';
-        import { STLLoader } from '/node_modules/three/examples/jsm/loaders/STLLoader.js';
-        import { OrbitControls } from '/node_modules/three/examples/jsm/controls/OrbitControls.js';
+        import * as THREE from 'three';
+        import { STLLoader } from 'three/addons/loaders/STLLoader.js';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
         
         let scene, camera, renderer, controls;
         let currentFilePath = null;
