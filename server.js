@@ -4,6 +4,7 @@ import { parseSTL, stlToShapeData, buildShapesObject } from './src/stl-parser.js
 import path from 'path';
 import { fileURLToPath } from 'url';
 import chokidar from 'chokidar';
+import fs from 'fs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +20,9 @@ let watcher = null;
 
 // Serve static files from public directory
 app.use(express.static('public'));
+
+// Also serve node_modules for three-cad-viewer
+app.use('/node_modules', express.static('node_modules'));
 
 // API endpoint to get STL data
 app.get('/api/stl', (req, res) => {
@@ -130,28 +134,36 @@ app.get('/api/stop-watch', (req, res) => {
 function startServer(stlFilePath) {
     if (stlFilePath) {
         const absolutePath = path.resolve(stlFilePath);
-        currentStlPath = absolutePath;
-        console.log(`Loading STL file: ${absolutePath}`);
         
-        // Set up file watcher
-        watcher = chokidar.watch(absolutePath, {
-            persistent: true,
-            ignoreInitial: true,
-            awaitWriteFinish: {
-                stabilityThreshold: 100,
-                pollInterval: 50
-            }
-        });
-        
-        watcher.on('change', () => {
-            console.log(`File changed: ${absolutePath}`);
-        });
+        // Check if file exists
+        if (!fs.existsSync(absolutePath)) {
+            console.error(`Error: File not found: ${absolutePath}`);
+        } else {
+            currentStlPath = absolutePath;
+            console.log(`Loading STL file: ${absolutePath}`);
+            
+            // Set up file watcher
+            watcher = chokidar.watch(absolutePath, {
+                persistent: true,
+                ignoreInitial: true,
+                awaitWriteFinish: {
+                    stabilityThreshold: 100,
+                    pollInterval: 50
+                }
+            });
+            
+            watcher.on('change', () => {
+                console.log(`File changed: ${absolutePath}`);
+            });
+        }
     }
     
     server.listen(PORT, () => {
         console.log(`STL Viewer running at http://localhost:${PORT}`);
         if (currentStlPath) {
             console.log(`Watching file: ${currentStlPath}`);
+        } else {
+            console.log('No file loaded. Run with: npm start path/to/file.stl');
         }
     });
 }
