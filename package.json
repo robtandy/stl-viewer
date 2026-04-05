@@ -1,0 +1,27 @@
+{
+  "name": "stl-viewer",
+  "version": "1.0.0",
+  "description": "STL file viewer using three-cad-viewer",
+  "type": "module",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "start:watch": "node --watch server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/robtandy/stl-viewer.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/robtandy/stl-viewer/issues"
+  },
+  "homepage": "https://github.com/robtandy/stl-viewer#readme",
+  "dependencies": {
+    "chokidar": "^5.0.0",
+    "express": "^5.2.1",
+    "three-cad-viewer": "^4.3.6"
+  }
+}

@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>STL Viewer</title>
+    <link rel="stylesheet" href="/node_modules/three-cad-viewer/dist/three-cad-viewer.css" />
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1a1a2e;
+            color: #eee;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+        
+        #header {
+            background: #16213e;
+            padding: 12px 20px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            border-bottom: 1px solid #0f3460;
+        }
+        
+        #header h1 {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #e94560;
+        }
+        
+        #file-info {
+            flex: 1;
+            font-size: 0.9rem;
+            color: #888;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        
+        #status {
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 0.8rem;
+            font-weight: 500;
+        }
+        
+        #status.watching {
+            background: #28a745;
+            color: white;
+        }
+        
+        #status.reloading {
+            background: #ffc107;
+            color: black;
+        }
+        
+        #status.error {
+            background: #dc3545;
+            color: white;
+        }
+        
+        #status.idle {
+            background: #6c757d;
+            color: white;
+        }
+        
+        #reload-btn {
+            background: #e94560;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: 500;
+        }
+        
+        #reload-btn:hover {
+            background: #d63850;
+        }
+        
+        #viewer-container {
+            flex: 1;
+            position: relative;
+        }
+        
+        #cad_view {
+            width: 100%;
+            height: 100%;
+        }
+        
+        #loading-overlay {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            z-index: 100;
+        }
+        
+        #loading-overlay.hidden {
+            display: none;
+        }
+        
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #333;
+            border-top-color: #e94560;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 16px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        #error-message {
+            background: rgba(220, 53, 69, 0.9);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 4px;
+            margin-top: 16px;
+            max-width: 400px;
+        }
+        
+        #error-message.hidden {
+            display: none;
+        }
+        
+        #no-file {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            text-align: center;
+            color: #888;
+        }
+        
+        #no-file.hidden {
+            display: none;
+        }
+        
+        #no-file p {
+            margin-bottom: 8px;
+        }
+        
+        #no-file code {
+            background: #333;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <div id="header">
+        <h1>STL Viewer</h1>
+        <div id="file-info">No file loaded</div>
+        <span id="status" class="idle">Idle</span>
+        <button id="reload-btn">Reload</button>
+    </div>
+    
+    <div id="viewer-container">
+        <div id="cad_view"></div>
+        
+        <div id="no-file">
+            <p>Run with an STL file:</p>
+            <p><code>node server.js path/to/file.stl</code></p>
+        </div>
+        
+        <div id="loading-overlay" class="hidden">
+            <div class="spinner"></div>
+            <div>Loading STL...</div>
+            <div id="error-message" class="hidden"></div>
+        </div>
+    </div>
+
+    <script type="module">
+        import { Viewer, Display, Timer } from '/node_modules/three-cad-viewer/dist/three-cad-viewer.esm.js';
+        
+        let display = null;
+        let viewer = null;
+        let currentFilePath = null;
+        let eventSource = null;
+        let pollInterval = null;
+        
+        const displayOptions = {
+            cadWidth: 0,
+            height: 0,
+            treeWidth: 260,
+            theme: "dark",
+            pinning: true,
+            control: {
+                zoom: true,
+                pan: true,
+                rotate: true,
+                zoomSpeed: 1.0,
+                panSpeed: 1.0,
+                rotateSpeed: 1.0
+            }
+        };
+        
+        const renderOptions = {
+            ambientIntensity: 1.0,
+            directIntensity: 1.1,
+            metalness: 0.3,
+            roughness: 0.65,
+            edgeColor: 0x808080,
+            defaultOpacity: 1.0,
+            normalLen: 0,
+            background: { color: 0x1a1a2e }
+        };
+        
+        const viewerOptions = {
+            target: [0, 0, 0],
+            up: "Z"
+        };
+        
+        function nc(change) {
+            console.log("CHANGE:", JSON.stringify(change, null, 2));
+        }
+        
+        function setStatus(status, text) {
+            const statusEl = document.getElementById('status');
+            statusEl.className = status;
+            statusEl.textContent = text;
+        }
+        
+        function showError(message) {
+            const errorEl = document.getElementById('error-message');
+            errorEl.textContent = message;
+            errorEl.classList.remove('hidden');
+            setStatus('error', 'Error');
+        }
+        
+        function hideError() {
+            const errorEl = document.getElementById('error-message');
+            errorEl.classList.add('hidden');
+        }
+        
+        function showLoading() {
+            document.getElementById('loading-overlay').classList.remove('hidden');
+            document.getElementById('no-file').classList.add('hidden');
+        }
+        
+        function hideLoading() {
+            document.getElementById('loading-overlay').classList.add('hidden');
+        }
+        
+        function updateFileInfo(filePath) {
+            const fileInfo = document.getElementById('file-info');
+            if (filePath) {
+                fileInfo.textContent = filePath;
+            } else {
+                fileInfo.textContent = 'No file loaded';
+            }
+        }
+        
+        function initViewer() {
+            const container = document.getElementById('cad_view');
+            
+            // Resize to fill container
+            const containerRect = container.getBoundingClientRect();
+            displayOptions.cadWidth = containerRect.width;
+            displayOptions.height = containerRect.height;
+            
+            display = new Display(container, displayOptions);
+            viewer = new Viewer(display, viewerOptions, nc);
+        }
+        
+        async function loadStlFile() {
+            showLoading();
+            hideError();
+            
+            try {
+                const response = await fetch('/api/stl');
+                
+                if (!response.ok) {
+                    const error = await response.json();
+                    throw new Error(error.error || 'Failed to load STL');
+                }
+                
+                const data = await response.json();
+                currentFilePath = data.filePath;
+                
+                updateFileInfo(currentFilePath);
+                
+                // Clear existing and render new
+                if (viewer) {
+                    viewer.clear();
+                }
+                
+                viewer.render(data.shapes, renderOptions, viewerOptions);
+                
+                setStatus('watching', 'Watching');
+                hideLoading();
+                
+                // Start polling for changes
+                startPolling();
+                
+            } catch (error) {
+                console.error('Error loading STL:', error);
+                showError(error.message);
+                hideLoading();
+            }
+        }
+        
+        async function checkForChanges() {
+            if (!currentFilePath) return;
+            
+            try {
+                const response = await fetch('/api/stl');
+                if (response.ok) {
+                    const data = await response.json();
+                    
+                    // Simple check - just reload if we get a valid response
+                    // In a production app, you'd compare data hashes or timestamps
+                    loadStlFile();
+                }
+            } catch (error) {
+                console.error('Error checking for changes:', error);
+            }
+        }
+        
+        function startPolling() {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+            }
+            
+            // Poll for changes every 500ms
+            pollInterval = setInterval(checkForChanges, 500);
+        }
+        
+        function stopPolling() {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+                pollInterval = null;
+            }
+        }
+        
+        async function initialize() {
+            // Check if a file path was provided
+            try {
+                const response = await fetch('/api/file');
+                const data = await response.json();
+                
+                if (data.filePath) {
+                    initViewer();
+                    loadStlFile();
+                } else {
+                    document.getElementById('no-file').classList.remove('hidden');
+                    setStatus('idle', 'No File');
+                }
+            } catch (error) {
+                console.error('Error initializing:', error);
+            }
+        }
+        
+        // Handle window resize
+        function handleResize() {
+            if (display) {
+                const container = document.getElementById('cad_view');
+                const rect = container.getBoundingClientRect();
+                display.resize(rect.width, rect.height);
+            }
+        }
+        
+        window.addEventListener('resize', handleResize);
+        
+        // Reload button
+        document.getElementById('reload-btn').addEventListener('click', () => {
+            if (currentFilePath) {
+                setStatus('reloading', 'Reloading...');
+                loadStlFile();
+            }
+        });
+        
+        // Initialize on load
+        initialize();
+    </script>
+</body>
+</html>
