@@ -32,9 +32,13 @@ app.get('/api/stl-file', (req, res) => {
     
     try {
         const data = fs.readFileSync(currentStlPath);
+        const stats = fs.statSync(currentStlPath);
         res.setHeader('Content-Type', 'application/octet-stream');
         res.setHeader('Content-Disposition', `attachment; filename="${path.basename(currentStlPath)}"`);
-        res.send(data);
+        res.json({
+            data: data.toString('binary'),
+            modified: stats.mtimeMs
+        });
     } catch (error) {
         console.error('Error reading STL file:', error);
         res.status(500).json({ error: error.message });

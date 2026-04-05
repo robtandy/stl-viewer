@@ -293,10 +293,23 @@
             
             const loader = new STLLoader();
             
-            // Load from the API endpoint which serves the file directly
-            loader.load(
-                '/api/stl-file',
-                function (geometry) {
+            // Fetch the STL file data directly
+            fetch('/api/stl-file')
+                .then(response => response.json())
+                .then(result => {
+                    // Convert binary string back to ArrayBuffer
+                    const buffer = new ArrayBuffer(result.data.length);
+                    const view = new Uint8Array(buffer);
+                    for (let i = 0; i < result.data.length; i++) {
+                        view[i] = result.data.charCodeAt(i);
+                    }
+                    
+                    // Parse the STL
+                    const geometry = loader.parse(buffer);
+                    
+                    // Store the modified time for change detection
+                    lastFileModified = result.modified;
+                    
                     // Remove old mesh
                     if (stlMesh) {
                         scene.remove(stlMesh);
@@ -304,13 +317,22 @@
                         if (stlMesh.material.dispose) stlMesh.material.dispose();
                     }
                     
+                    // Check for vertex colors
+                    console.log('Geometry attributes:', Object.keys(geometry.attributes));
+                    const hasColors = geometry.hasAttribute('color');
+                    console.log('Has vertex colors:', hasColors);
+                    if (hasColors) {
+                        console.log('Color attribute:', geometry.getAttribute('color'));
+                    }
+                    
                     // Create material - use vertex colors if available
                     let material;
-                    if (geometry.hasAttribute('color')) {
+                    if (hasColors) {
                         // Use vertex colors (VisCAM/SolidView)
                         material = new THREE.MeshPhongMaterial({
                             vertexColors: true,
-                            side: THREE.DoubleSide
+                            side: THREE.DoubleSide,
+                            flatShading: false
                         });
                     } else {
                         // Default orange color
@@ -349,24 +371,26 @@
                     hideLoading();
                     
                     startPolling();
-                },
-                undefined,
-                function (error) {
+                })
+                .catch(function (error) {
                     console.error('Error loading STL:', error);
                     showError('Failed to load STL file: ' + error.message);
                     hideLoading();
-                }
-            );
+                });
         }
+        
+        let lastFileModified = null;
         
         async function checkForChanges() {
             if (!currentFilePath) return;
             
             try {
-                const response = await fetch('/api/file');
-                const data = await response.json();
-                if (data.exists) {
-                    // Reload the file
+                // Fetch the file to check if it changed
+                const response = await fetch('/api/stl-file');
+                const result = await response.json();
+                
+                if (lastFileModified && result.modified > lastFileModified) {
+                    console.log('File changed, reloading...');
                     loadStlFile();
                 }
             } catch (error) {
@@ -379,8 +403,19 @@
                 clearInterval(pollInterval);
             }
             
-            // Poll for changes every 500ms
+            // Poll for file changes every 500ms
             pollInterval = setInterval(checkForChanges, 500);
+        }
+            }
+            
+            // Poll for file changes every 500ms
+            // Note: Currently just keeps the connection alive
+            // The watcher in the server triggers this, so this is just a fallback
+            pollInterval = setInterval(() => {
+                if (currentFilePath) {
+                    // Just check if we should still be polling - don't reload every time
+                }
+            }, 1000);
         }
         
         function stopPolling() {
