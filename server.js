@@ -32,17 +32,34 @@ app.get('/api/stl-file', (req, res) => {
     
     try {
         const data = fs.readFileSync(currentStlPath);
-        const stats = fs.statSync(currentStlPath);
         res.setHeader('Content-Type', 'application/octet-stream');
         res.setHeader('Content-Disposition', `attachment; filename="${path.basename(currentStlPath)}"`);
-        res.json({
-            data: data.toString('binary'),
-            modified: stats.mtimeMs
-        });
+        res.send(data);
     } catch (error) {
         console.error('Error reading STL file:', error);
         res.status(500).json({ error: error.message });
     }
+});
+
+// SSE clients for file change notifications
+const sseClients = [];
+
+// SSE endpoint for file change notifications
+app.get('/api/events', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    
+    sseClients.push(res);
+    console.log('SSE client connected');
+    
+    req.on('close', () => {
+        const index = sseClients.indexOf(res);
+        if (index > -1) {
+            sseClients.splice(index, 1);
+        }
+        console.log('SSE client disconnected');
+    });
 });
 
 // API endpoint to get STL data
@@ -175,6 +192,10 @@ function startServer(stlFilePath) {
             
             watcher.on('change', () => {
                 console.log(`File changed: ${absolutePath}`);
+                // Notify all SSE clients
+                for (const client of sseClients) {
+                    client.write('data: reload\n\n');
+                }
             });
         }
     }

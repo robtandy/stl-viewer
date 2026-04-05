@@ -293,22 +293,12 @@
             
             const loader = new STLLoader();
             
-            // Fetch the STL file data directly
+            // Fetch the STL file data directly as binary
             fetch('/api/stl-file')
-                .then(response => response.json())
-                .then(result => {
-                    // Convert binary string back to ArrayBuffer
-                    const buffer = new ArrayBuffer(result.data.length);
-                    const view = new Uint8Array(buffer);
-                    for (let i = 0; i < result.data.length; i++) {
-                        view[i] = result.data.charCodeAt(i);
-                    }
-                    
+                .then(response => response.arrayBuffer())
+                .then(buffer => {
                     // Parse the STL
                     const geometry = loader.parse(buffer);
-                    
-                    // Store the modified time for change detection
-                    lastFileModified = result.modified;
                     
                     // Remove old mesh
                     if (stlMesh) {
@@ -370,7 +360,7 @@
                     setStatus('watching', 'Watching');
                     hideLoading();
                     
-                    startPolling();
+                    setupFileWatcher();
                 })
                 .catch(function (error) {
                     console.error('Error loading STL:', error);
@@ -379,57 +369,28 @@
                 });
         }
         
-        let lastFileModified = null;
+        let reloadRequested = false;
         
-        async function checkForChanges() {
-            if (!currentFilePath) return;
-            
-            try {
-                // Fetch the file to check if it changed
-                const response = await fetch('/api/stl-file');
-                const result = await response.json();
-                
-                if (lastFileModified && result.modified > lastFileModified) {
-                    console.log('File changed, reloading...');
-                    loadStlFile();
-                }
-            } catch (error) {
-                console.error('Error checking for changes:', error);
-            }
-        }
+        let eventSource = null;
         
-        function startPolling() {
-            if (pollInterval) {
-                clearInterval(pollInterval);
+        // Listen for server-sent events when file changes
+        function setupFileWatcher() {
+            if (eventSource) {
+                eventSource.close();
             }
             
-            // Poll for file changes every 500ms
-            pollInterval = setInterval(checkForChanges, 500);
-        }
-        
-        function stopPolling() {
-            if (pollInterval) {
-                clearInterval(pollInterval);
-                pollInterval = null;
-            }
-        }
-        
-        async function initialize() {
-            try {
-                const response = await fetch('/api/file');
-                const data = await response.json();
-                
-                if (data.filePath) {
-                    currentFilePath = data.filePath;
-                    initThreeJS();
-                    loadStlFile();
-                } else {
-                    document.getElementById('no-file').classList.remove('hidden');
-                    setStatus('idle', 'No File');
-                }
-            } catch (error) {
-                console.error('Error initializing:', error);
-            }
+            eventSource = new EventSource('/api/events');
+            
+            eventSource.onmessage = (event) => {
+                console.log('File change detected, reloading...');
+                loadStlFile();
+            };
+            
+            eventSource.onerror = () => {
+                eventSource.close();
+                // Reconnect after a delay
+                setTimeout(setupFileWatcher, 1000);
+            };
         }
         
         // Handle window resize
