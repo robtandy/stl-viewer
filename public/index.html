@@ -198,7 +198,7 @@
         
         let scene, camera, renderer, controls;
         let currentFilePath = null;
-        let pollInterval = null;
+        let eventSource = null;
         let stlMesh = null;
         
         function initThreeJS() {
@@ -369,10 +369,6 @@
                 });
         }
         
-        let reloadRequested = false;
-        
-        let eventSource = null;
-        
         // Listen for server-sent events when file changes
         function setupFileWatcher() {
             if (eventSource) {
@@ -415,6 +411,24 @@
                 loadStlFile();
             }
         });
+        
+        async function initialize() {
+            try {
+                const response = await fetch('/api/file');
+                const data = await response.json();
+                
+                if (data.filePath) {
+                    currentFilePath = data.filePath;
+                    initThreeJS();
+                    loadStlFile();
+                } else {
+                    document.getElementById('no-file').classList.remove('hidden');
+                    setStatus('idle', 'No File');
+                }
+            } catch (error) {
+                console.error('Error initializing:', error);
+            }
+        }
         
         // Initialize on load
         initialize();
