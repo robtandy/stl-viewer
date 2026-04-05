@@ -32,6 +32,9 @@ app.get('/api/stl-file', (req, res) => {
     
     try {
         const data = fs.readFileSync(currentStlPath);
+        // Log header for debugging
+        const header = data.slice(0, 80).toString('ascii');
+        console.log('STL header:', header.substring(0, 50).replace(/\0/g, ' '));
         res.setHeader('Content-Type', 'application/octet-stream');
         res.setHeader('Content-Disposition', `attachment; filename="${path.basename(currentStlPath)}"`);
         res.send(data);

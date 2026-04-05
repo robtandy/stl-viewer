@@ -309,10 +309,13 @@
                     
                     // Check for vertex colors
                     console.log('Geometry attributes:', Object.keys(geometry.attributes));
+                    console.log('Vertex count:', geometry.attributes.position.count);
                     const hasColors = geometry.hasAttribute('color');
                     console.log('Has vertex colors:', hasColors);
                     if (hasColors) {
-                        console.log('Color attribute:', geometry.getAttribute('color'));
+                        const colorAttr = geometry.getAttribute('color');
+                        console.log('Color count:', colorAttr.count);
+                        console.log('Sample colors:', colorAttr.array[0], colorAttr.array[1], colorAttr.array[2]);
                     }
                     
                     // Create material - use vertex colors if available
