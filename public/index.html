@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>STL Viewer</title>
-    <link rel="stylesheet" href="/node_modules/three-cad-viewer/dist/three-cad-viewer.css" />
     <style>
         * {
             margin: 0;
@@ -185,48 +184,63 @@
     </div>
 
     <script type="module">
-        import { Viewer, Display, Timer } from '/node_modules/three-cad-viewer/dist/three-cad-viewer.esm.js';
+        import * as THREE from '/node_modules/three/build/three.module.js';
+        import { STLLoader } from '/node_modules/three/examples/jsm/loaders/STLLoader.js';
+        import { OrbitControls } from '/node_modules/three/examples/jsm/controls/OrbitControls.js';
         
-        let display = null;
-        let viewer = null;
+        let scene, camera, renderer, controls;
         let currentFilePath = null;
-        let eventSource = null;
         let pollInterval = null;
+        let stlMesh = null;
         
-        const displayOptions = {
-            cadWidth: 0,
-            height: 0,
-            treeWidth: 260,
-            theme: "dark",
-            pinning: true,
-            control: {
-                zoom: true,
-                pan: true,
-                rotate: true,
-                zoomSpeed: 1.0,
-                panSpeed: 1.0,
-                rotateSpeed: 1.0
-            }
-        };
+        function initThreeJS() {
+            const container = document.getElementById('cad_view');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x1a1a2e);
+            
+            // Camera
+            camera = new THREE.PerspectiveCamera(45, width / height, 0.1, 10000);
+            camera.position.set(100, 100, 100);
+            
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(width, height);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+            
+            // Controls
+            controls = new OrbitControls(camera, renderer.domElement);
+            controls.enableDamping = true;
+            controls.dampingFactor = 0.05;
+            
+            // Lights
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+            scene.add(ambientLight);
+            
+            const directLight = new THREE.DirectionalLight(0xffffff, 1.1);
+            directLight.position.set(1, 1, 1);
+            scene.add(directLight);
+            
+            const directLight2 = new THREE.DirectionalLight(0xffffff, 0.5);
+            directLight2.position.set(-1, -1, -1);
+            scene.add(directLight2);
+            
+            // Grid helper
+            const gridHelper = new THREE.GridHelper(200, 20, 0x444444, 0x333333);
+            scene.add(gridHelper);
+            
+            // Animation loop
+            animate();
+        }
         
-        const renderOptions = {
-            ambientIntensity: 1.0,
-            directIntensity: 1.1,
-            metalness: 0.3,
-            roughness: 0.65,
-            edgeColor: 0x808080,
-            defaultOpacity: 1.0,
-            normalLen: 0,
-            background: { color: 0x1a1a2e }
-        };
-        
-        const viewerOptions = {
-            target: [0, 0, 0],
-            up: "Z"
-        };
-        
-        function nc(change) {
-            console.log("CHANGE:", JSON.stringify(change, null, 2));
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
         }
         
         function setStatus(status, text) {
@@ -265,65 +279,88 @@
             }
         }
         
-        function initViewer() {
-            const container = document.getElementById('cad_view');
-            
-            // Resize to fill container
-            const containerRect = container.getBoundingClientRect();
-            displayOptions.cadWidth = containerRect.width;
-            displayOptions.height = containerRect.height;
-            
-            display = new Display(container, displayOptions);
-            viewer = new Viewer(display, viewerOptions, nc);
-        }
-        
-        async function loadStlFile() {
+        function loadStlFile() {
             showLoading();
             hideError();
             
-            try {
-                const response = await fetch('/api/stl');
-                
-                if (!response.ok) {
-                    const error = await response.json();
-                    throw new Error(error.error || 'Failed to load STL');
+            const loader = new STLLoader();
+            
+            // Use the raw file path
+            const fileName = currentFilePath.split('/').pop();
+            
+            loader.load(
+                `/stl/${encodeURIComponent(fileName)}`,
+                function (geometry) {
+                    // Remove old mesh
+                    if (stlMesh) {
+                        scene.remove(stlMesh);
+                        stlMesh.geometry.dispose();
+                        if (stlMesh.material.dispose) stlMesh.material.dispose();
+                    }
+                    
+                    // Create material - use vertex colors if available
+                    let material;
+                    if (geometry.hasAttribute('color')) {
+                        // Use vertex colors (VisCAM/SolidView)
+                        material = new THREE.MeshPhongMaterial({
+                            vertexColors: true,
+                            side: THREE.DoubleSide
+                        });
+                    } else {
+                        // Default orange color
+                        material = new THREE.MeshPhongMaterial({
+                            color: 0xe8b024,
+                            side: THREE.DoubleSide
+                        });
+                    }
+                    
+                    stlMesh = new THREE.Mesh(geometry, material);
+                    
+                    // Center and scale
+                    geometry.computeBoundingBox();
+                    const boundingBox = geometry.boundingBox;
+                    const center = new THREE.Vector3();
+                    boundingBox.getCenter(center);
+                    
+                    // Move mesh to center
+                    stlMesh.position.sub(center);
+                    
+                    // Auto-scale to fit view
+                    const size = new THREE.Vector3();
+                    boundingBox.getSize(size);
+                    const maxDim = Math.max(size.x, size.y, size.z);
+                    const scale = 100 / maxDim;
+                    stlMesh.scale.setScalar(scale);
+                    
+                    scene.add(stlMesh);
+                    
+                    // Reset camera
+                    camera.position.set(150, 150, 150);
+                    controls.target.set(0, 0, 0);
+                    controls.update();
+                    
+                    setStatus('watching', 'Watching');
+                    hideLoading();
+                    
+                    startPolling();
+                },
+                undefined,
+                function (error) {
+                    console.error('Error loading STL:', error);
+                    showError('Failed to load STL file: ' + error.message);
+                    hideLoading();
                 }
-                
-                const data = await response.json();
-                currentFilePath = data.filePath;
-                
-                updateFileInfo(currentFilePath);
-                
-                // Clear existing and render new
-                if (viewer) {
-                    viewer.clear();
-                }
-                
-                viewer.render(data.shapes, renderOptions, viewerOptions);
-                
-                setStatus('watching', 'Watching');
-                hideLoading();
-                
-                // Start polling for changes
-                startPolling();
-                
-            } catch (error) {
-                console.error('Error loading STL:', error);
-                showError(error.message);
-                hideLoading();
-            }
+            );
         }
         
         async function checkForChanges() {
             if (!currentFilePath) return;
             
             try {
-                const response = await fetch('/api/stl');
-                if (response.ok) {
-                    const data = await response.json();
-                    
-                    // Simple check - just reload if we get a valid response
-                    // In a production app, you'd compare data hashes or timestamps
+                const response = await fetch('/api/file');
+                const data = await response.json();
+                if (data.exists) {
+                    // Reload the file
                     loadStlFile();
                 }
             } catch (error) {
@@ -348,13 +385,13 @@
         }
         
         async function initialize() {
-            // Check if a file path was provided
             try {
                 const response = await fetch('/api/file');
                 const data = await response.json();
                 
                 if (data.filePath) {
-                    initViewer();
+                    currentFilePath = data.filePath;
+                    initThreeJS();
                     loadStlFile();
                 } else {
                     document.getElementById('no-file').classList.remove('hidden');
@@ -367,10 +404,14 @@
         
         // Handle window resize
         function handleResize() {
-            if (display) {
-                const container = document.getElementById('cad_view');
-                const rect = container.getBoundingClientRect();
-                display.resize(rect.width, rect.height);
+            const container = document.getElementById('cad_view');
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+            
+            if (camera && renderer) {
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+                renderer.setSize(width, height);
             }
         }
         

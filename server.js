@@ -24,6 +24,9 @@ app.use(express.static('public'));
 // Also serve node_modules for three-cad-viewer
 app.use('/node_modules', express.static('node_modules'));
 
+// Serve raw STL files
+app.use('/stl', express.static(process.cwd()));
+
 // API endpoint to get STL data
 app.get('/api/stl', (req, res) => {
     if (!currentStlPath) {

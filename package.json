@@ -1,7 +1,7 @@
 {
   "name": "stl-viewer",
   "version": "1.0.0",
-  "description": "STL file viewer using three-cad-viewer",
+  "description": "STL file viewer with VisCAM/SolidView color support",
   "type": "module",
   "main": "server.js",
   "scripts": {
@@ -22,6 +22,6 @@
   "dependencies": {
     "chokidar": "^5.0.0",
     "express": "^5.2.1",
-    "three-cad-viewer": "^4.3.6"
+    "three": "^0.183.2"
   }
 }
