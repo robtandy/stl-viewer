@@ -24,8 +24,22 @@ app.use(express.static('public'));
 // Also serve node_modules for three-cad-viewer
 app.use('/node_modules', express.static('node_modules'));
 
-// Serve raw STL files
-app.use('/stl', express.static(process.cwd()));
+// Serve raw STL files (with full path support)
+app.get('/api/stl-file', (req, res) => {
+    if (!currentStlPath) {
+        return res.status(404).json({ error: 'No STL file loaded' });
+    }
+    
+    try {
+        const data = fs.readFileSync(currentStlPath);
+        res.setHeader('Content-Type', 'application/octet-stream');
+        res.setHeader('Content-Disposition', `attachment; filename="${path.basename(currentStlPath)}"`);
+        res.send(data);
+    } catch (error) {
+        console.error('Error reading STL file:', error);
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // API endpoint to get STL data
 app.get('/api/stl', (req, res) => {

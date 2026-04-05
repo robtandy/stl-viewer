@@ -285,11 +285,9 @@
             
             const loader = new STLLoader();
             
-            // Use the raw file path
-            const fileName = currentFilePath.split('/').pop();
-            
+            // Load from the API endpoint which serves the file directly
             loader.load(
-                `/stl/${encodeURIComponent(fileName)}`,
+                '/api/stl-file',
                 function (geometry) {
                     // Remove old mesh
                     if (stlMesh) {
